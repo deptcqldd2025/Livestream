@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Hệ Thống Kiểm Soát An Toàn - VDC</title>
+    <title>Safety Check V1.2 (Fix Connect)</title>
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
@@ -15,58 +15,43 @@
     <style>
         body, html { height: 100%; margin: 0; background: #000; overflow: hidden; font-family: sans-serif; }
         
-        /* 1. Màn hình Video Full màn hình */
-        #video-wrapper {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;
-        }
-        video {
-            width: 100%; height: 100%; object-fit: cover; /* Video tràn màn hình đẹp mắt */
-        }
+        #video-wrapper { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; background: #222; }
+        video { width: 100%; height: 100%; object-fit: cover; }
         
-        /* 2. Lớp phủ giao diện (UI Overlay) */
         #ui-layer {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-            z-index: 10; pointer-events: none; /* Để bấm xuyên qua vùng trống */
+            z-index: 10; pointer-events: none;
             display: flex; flex-direction: column; justify-content: space-between;
         }
         
-        /* Header thông tin */
+        /* Debug Logs */
+        #debug-console {
+            position: absolute; top: 60px; left: 10px; z-index: 20;
+            background: rgba(0,0,0,0.7); color: #0f0; font-family: monospace;
+            font-size: 10px; padding: 5px; max-width: 200px; pointer-events: none;
+        }
+
         .top-bar {
-            background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
-            padding: 15px; color: white; display: flex; justify-content: space-between; align-items: center;
+            background: rgba(0,0,0,0.6); padding: 10px; color: white; display: flex; justify-content: space-between;
         }
         
-        /* Khu vực thông báo trạng thái chính giữa */
         .status-center {
             pointer-events: auto; align-self: center; text-align: center;
             padding: 10px 20px; border-radius: 30px; 
             font-weight: bold; text-transform: uppercase; font-size: 1.2rem;
             box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-            transition: all 0.3s ease;
+            margin-bottom: 20px;
         }
-        /* Màu sắc trạng thái */
-        .st-wait { background: rgba(255, 193, 7, 0.9); color: #000; }
-        .st-safe { background: rgba(40, 167, 69, 0.9); color: white; }
-        .st-danger { background: rgba(220, 53, 69, 0.9); color: white; animation: pulse 1s infinite; }
-        
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+        .st-wait { background: #ffc107; color: #000; }
+        .st-safe { background: #28a745; color: white; }
+        .st-danger { background: #dc3545; color: white; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.7; } }
 
-        /* Footer điều khiển (Nút bấm) */
         .bottom-controls {
-            background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
-            padding: 20px; pointer-events: auto; min-height: 120px;
-            display: flex; align-items: center; justify-content: center;
+            background: rgba(0,0,0,0.8); padding: 20px; pointer-events: auto;
         }
+        .btn-control { width: 100%; height: 50px; font-weight: bold; margin-bottom: 10px; border-radius: 8px; }
 
-        .btn-control {
-            width: 100%; height: 60px; font-size: 1.2rem; border-radius: 12px; font-weight: bold; text-transform: uppercase; border: none;
-        }
-        .btn-danger-custom { background: #ff4757; color: white; }
-        .btn-success-custom { background: #2ed573; color: white; }
-        .btn-start-work { background: #1e90ff; color: white; }
-        .btn-disabled { background: #57606f; color: #a4b0be; cursor: not-allowed; }
-
-        /* Màn hình chọn vai trò lúc đầu */
         #setup-screen {
             position: fixed; z-index: 9999; background: #fff; width: 100%; height: 100%;
             display: flex; flex-direction: column; justify-content: center; align-items: center;
@@ -77,64 +62,42 @@
 <body>
 
     <div id="setup-screen">
-        <h3 class="mb-4 text-primary fw-bold">CHỌN CHẾ ĐỘ</h3>
-        <div class="d-grid gap-3 col-10 col-md-4">
-            <button class="btn btn-outline-primary btn-lg py-3" onclick="startApp('streamer')">
-                <i class="fas fa-camera"></i> ĐỘI HIỆN TRƯỜNG
-            </button>
-            <button class="btn btn-outline-dark btn-lg py-3" onclick="startApp('viewer')">
-                <i class="fas fa-eye"></i> GIÁM SÁT VIÊN
-            </button>
-        </div>
-        <p class="mt-4 text-muted">ID Phòng: <span id="room-display">VDC_01</span></p>
+        <h3 class="mb-4">CHỌN VAI TRÒ</h3>
+        <button class="btn btn-primary btn-lg mb-3 w-75" onclick="initApp('streamer')">HIỆN TRƯỜNG (Camera)</button>
+        <button class="btn btn-dark btn-lg w-75" onclick="initApp('viewer')">GIÁM SÁT (Xem)</button>
+        <div class="mt-3 text-muted small">V1.2: Fix connection logic</div>
     </div>
 
     <div id="main-app" class="hidden">
-        
         <div id="video-wrapper">
             <video id="remote-video" autoplay playsinline class="hidden"></video>
             <video id="local-video" autoplay playsinline muted class="hidden"></video>
         </div>
 
+        <div id="debug-console">Logs:<br></div>
+
         <div id="ui-layer">
-            
             <div class="top-bar">
-                <div><i class="fas fa-signal"></i> <span id="role-label">...</span></div>
-                <div class="small text-white-50">V1.1</div>
+                <span id="role-label">Role</span>
+                <button class="btn btn-sm btn-outline-light" style="pointer-events:auto" onclick="location.reload()">Reset</button>
             </div>
 
-            <div id="safety-badge" class="status-center st-wait">
-                Đang chờ kết nối...
-            </div>
+            <div id="safety-badge" class="status-center st-wait">Đang kết nối...</div>
 
             <div class="bottom-controls">
-                
-                <div id="monitor-actions" class="w-100 row g-2 hidden">
-                    <div class="col-6">
-                        <button class="btn-control btn-danger-custom shadow" onclick="sendSafetySignal('danger')">
-                            <i class="fas fa-times-circle"></i> Cảnh Báo
-                        </button>
-                    </div>
-                    <div class="col-6">
-                        <button class="btn-control btn-success-custom shadow" onclick="sendSafetySignal('safe')">
-                            <i class="fas fa-check-circle"></i> Xác Nhận
-                        </button>
-                    </div>
+                <div id="monitor-actions" class="hidden row">
+                    <div class="col-6"><button class="btn btn-danger btn-control" onclick="sendSignal('danger')">CẢNH BÁO</button></div>
+                    <div class="col-6"><button class="btn btn-success btn-control" onclick="sendSignal('safe')">XÁC NHẬN</button></div>
                 </div>
-
-                <div id="field-actions" class="w-100 hidden">
-                    <button id="btn-work" class="btn-control btn-disabled shadow" disabled onclick="startWorking()">
-                        <i class="fas fa-hard-hat"></i> BẮT ĐẦU LÀM VIỆC
-                    </button>
-                    <div id="field-msg" class="text-white text-center mt-2 small">Chờ xác nhận an toàn...</div>
+                <div id="field-actions" class="hidden">
+                    <button id="btn-work" class="btn btn-secondary btn-control" disabled onclick="alert('Đã bắt đầu!')">BẮT ĐẦU LÀM VIỆC</button>
                 </div>
-
             </div>
         </div>
     </div>
 
     <script>
-        // --- CẤU HÌNH CỦA BẠN ---
+        // === CẤU HÌNH ===
         const firebaseConfig = { 
             apiKey: "AIzaSyCzWjfcD5Dgq7V-i2izb9tKLR6QM6qWPQo", 
             authDomain: "tavietnam-78ae8.firebaseapp.com", 
@@ -143,191 +106,167 @@
             messagingSenderId: "670121705534", 
             appId: "1:670121705534:web:1027ad98550573ad37116f" 
         };
+        const ROOM_ID = "VDC_LIVE_01"; 
 
-        const ROOM_ID = "VDC_FIXED_ROOM_01"; // ID phòng cố định (Thực tế có thể lấy từ URL)
+        // === PEER CONFIG (QUAN TRỌNG: Thêm STUN Server Google) ===
+        const peerConfig = {
+            config: {
+                'iceServers': [
+                    { url: 'stun:stun.l.google.com:19302' },
+                    { url: 'stun:stun1.l.google.com:19302' }
+                ]
+            }
+        };
 
-        // --- KHỞI TẠO ---
-        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        // === INIT ===
+        firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
         let peer;
         let myStream;
-        let currentRole = '';
+        let role = '';
 
-        // --- LOGIC CHÍNH ---
+        function log(msg) {
+            const el = document.getElementById('debug-console');
+            el.innerHTML += msg + "<br>";
+            el.scrollTop = el.scrollHeight;
+            console.log(msg);
+        }
 
-        function startApp(role) {
-            currentRole = role;
+        function initApp(selectedRole) {
+            role = selectedRole;
             document.getElementById('setup-screen').classList.add('hidden');
             document.getElementById('main-app').classList.remove('hidden');
+            document.getElementById('role-label').innerText = role === 'streamer' ? "HIỆN TRƯỜNG" : "GIÁM SÁT";
+
+            // Listen Safety Logic (Liên thông nút bấm)
+            listenSafety();
 
             if (role === 'streamer') {
-                setupStreamerUI();
-                initPeerStreamer();
+                setupStreamer();
             } else {
-                setupViewerUI();
-                initPeerViewer();
+                setupViewer();
             }
-
-            // Luôn lắng nghe trạng thái Firebase dù là vai trò gì
-            listenToFirebaseStatus();
         }
 
-        // --- XỬ LÝ GIAO DIỆN ---
-        function setupStreamerUI() {
-            document.getElementById('role-label').innerText = "PHÁT TRỰC TIẾP";
+        // === STREAMER LOGIC ===
+        async function setupStreamer() {
             document.getElementById('local-video').classList.remove('hidden');
             document.getElementById('field-actions').classList.remove('hidden');
-        }
-
-        function setupViewerUI() {
-            document.getElementById('role-label').innerText = "GIÁM SÁT VIÊN";
-            document.getElementById('remote-video').classList.remove('hidden');
-            document.getElementById('monitor-actions').classList.remove('hidden');
-            updateBadge('waiting', 'Đang kết nối video...');
-        }
-
-        // --- XỬ LÝ VIDEO (WEBRTC PEERJS) ---
-        
-        // 1. Logic Hiện trường (Streamer)
-        async function initPeerStreamer() {
+            
             try {
-                // Mở Camera
-                myStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: true });
+                log("1. Đang mở Camera...");
+                myStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: true });
                 document.getElementById('local-video').srcObject = myStream;
+                log("-> Camera OK");
 
-                // Tạo Peer với ID cố định để Viewer dễ tìm
-                peer = new Peer(ROOM_ID + "_STREAMER");
+                // Tạo Peer với ID ngẫu nhiên, sau đó đẩy lên Firebase
+                peer = new Peer(peerConfig);
 
                 peer.on('open', (id) => {
-                    console.log('Streamer Ready: ' + id);
-                    resetSafetyStatus(); // Reset trạng thái mỗi khi bắt đầu phiên mới
+                    log("2. Peer ID: " + id);
+                    // Ghi ID của streamer lên Firebase để Viewer biết đường gọi
+                    db.ref('rooms/' + ROOM_ID).set({
+                        streamerID: id,
+                        active: true,
+                        timestamp: Date.now()
+                    });
+                    log("-> Đã gửi ID lên Server");
                 });
 
-                // Khi Viewer gọi tới -> Trả lời cuộc gọi
                 peer.on('call', (call) => {
+                    log("3. Có người gọi tới!");
                     call.answer(myStream);
-                    updateBadge('waiting', 'GIÁM SÁT ĐÃ VÀO');
+                    log("-> Đang gửi video...");
                 });
 
-                peer.on('error', (err) => {
-                    if(err.type === 'unavailable-id') {
-                        alert("Lỗi: Đang có người khác livestream trong phòng này rồi!");
-                    }
-                });
+                peer.on('error', err => log("ERR: " + err.type));
 
             } catch (e) {
-                alert("Không thể mở Camera: " + e.message);
+                log("LỖI CAM: " + e.message);
+                alert("Không thể mở Camera. Kiểm tra quyền truy cập.");
             }
         }
 
-        // 2. Logic Giám sát (Viewer)
-        function initPeerViewer() {
-            peer = new Peer(); // ID ngẫu nhiên
+        // === VIEWER LOGIC ===
+        function setupViewer() {
+            document.getElementById('remote-video').classList.remove('hidden');
+            document.getElementById('monitor-actions').classList.remove('hidden');
 
-            peer.on('open', (id) => {
-                console.log('Viewer Ready: ' + id);
-                connectToStreamer();
+            peer = new Peer(peerConfig);
+
+            peer.on('open', (myId) => {
+                log("1. Viewer Ready. Tìm Streamer...");
+                
+                // Lắng nghe Firebase để lấy ID của Streamer
+                db.ref('rooms/' + ROOM_ID).on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    if (data && data.streamerID) {
+                        log("2. Thấy Streamer ID: " + data.streamerID);
+                        connectToStreamer(data.streamerID);
+                    } else {
+                        log("Chưa thấy Streamer online...");
+                    }
+                });
             });
+
+            peer.on('error', err => log("ERR: " + err.type));
         }
 
-        function connectToStreamer() {
-            // Viewer chủ động gọi cho Streamer
-            // Cần tạo một stream giả (dummy) để kích hoạt kết nối 2 chiều nếu cần, hoặc chỉ nhận
-            // Ở đây ta dùng chế độ nhận (receive only)
-            const conn = peer.connect(ROOM_ID + "_STREAMER");
-            
-            conn.on('open', () => {
-                console.log("Đã tìm thấy Streamer");
-            });
+        let currentCall = null;
+        function connectToStreamer(remoteId) {
+            if (currentCall) return; // Đã gọi rồi thì thôi
 
-            // Gọi để lấy Video
-            const call = peer.call(ROOM_ID + "_STREAMER", navigator.mediaDevices.getUserMedia ? null : null);
-            
+            log("3. Đang gọi video tới Streamer...");
+            // Gọi nhưng không cần gửi video của mình đi (tiết kiệm băng thông)
+            const call = peer.call(remoteId, navigator.mediaDevices.getUserMedia ? null : null); 
+            currentCall = call;
+
             call.on('stream', (remoteStream) => {
-                document.getElementById('remote-video').srcObject = remoteStream;
-                // Khi nhận được video, trạng thái sẽ do Firebase quyết định
+                log("4. Đã nhận được VIDEO!");
+                const video = document.getElementById('remote-video');
+                video.srcObject = remoteStream;
+                
+                // Hack để đảm bảo video chạy trên iPhone/Android
+                video.onloadedmetadata = () => {
+                    video.play().catch(e => log("Cần bấm vào màn hình để phát video"));
+                };
             });
 
-            // Nếu Streamer chưa online, thử lại sau 2s
-            call.peerConnection.onconnectionstatechange = (ev) => {
-                if(call.peerConnection.connectionState === 'failed') {
-                    setTimeout(connectToStreamer, 2000);
-                }
-            }
-        }
-
-        // --- XỬ LÝ DATABASE & LOGIC AN TOÀN ---
-
-        function sendSafetySignal(type) {
-            db.ref('safety_sessions/' + ROOM_ID).set({
-                status: type,
-                updatedAt: Date.now()
+            call.on('close', () => {
+                log("Kết nối bị đóng.");
+                currentCall = null;
             });
         }
 
-        function resetSafetyStatus() {
-            sendSafetySignal('waiting');
+        // === SAFETY SIGNAL LOGIC (Firebase) ===
+        function sendSignal(status) {
+            db.ref('safety/' + ROOM_ID).set(status);
         }
 
-        function listenToFirebaseStatus() {
+        function listenSafety() {
             const badge = document.getElementById('safety-badge');
             const btnWork = document.getElementById('btn-work');
-            const fieldMsg = document.getElementById('field-msg');
 
-            db.ref('safety_sessions/' + ROOM_ID).on('value', (snapshot) => {
-                const data = snapshot.val();
-                const status = data ? data.status : 'waiting';
+            db.ref('safety/' + ROOM_ID).on('value', (snap) => {
+                const status = snap.val() || 'waiting';
+                log("Status: " + status);
 
                 if (status === 'waiting') {
-                    updateBadge('waiting', 'CHỜ KIỂM TRA');
-                    if(currentRole === 'streamer') {
-                        btnWork.disabled = true;
-                        btnWork.classList.add('btn-disabled');
-                        btnWork.classList.remove('btn-start-work');
-                        fieldMsg.innerText = "Giữ camera ổn định để giám sát kiểm tra...";
-                    }
-                } 
-                else if (status === 'safe') {
-                    updateBadge('safe', 'AN TOÀN - ĐƯỢC PHÉP');
-                    if(currentRole === 'streamer') {
-                        btnWork.disabled = false;
-                        btnWork.classList.remove('btn-disabled');
-                        btnWork.classList.add('btn-start-work');
-                        fieldMsg.innerText = "Đã xác nhận an toàn. Bấm nút trên để làm việc.";
-                    }
-                } 
-                else if (status === 'danger') {
-                    updateBadge('danger', 'NGUY HIỂM - DỪNG LẠI');
-                    if(currentRole === 'streamer') {
-                        btnWork.disabled = true;
-                        btnWork.classList.add('btn-disabled');
-                        btnWork.classList.remove('btn-start-work');
-                        fieldMsg.innerText = "CẢNH BÁO! CÓ MỐI NGUY HIỂM!";
-                        // Rung điện thoại
-                        if(navigator.vibrate) navigator.vibrate([500, 200, 500]); 
-                    }
+                    badge.innerText = "CHỜ KIỂM TRA";
+                    badge.className = "status-center st-wait";
+                    btnWork.disabled = true; btnWork.classList.remove('btn-primary');
+                } else if (status === 'safe') {
+                    badge.innerText = "AN TOÀN OK";
+                    badge.className = "status-center st-safe";
+                    btnWork.disabled = false; btnWork.classList.add('btn-primary');
+                } else {
+                    badge.innerText = "NGUY HIỂM !!!";
+                    badge.className = "status-center st-danger";
+                    btnWork.disabled = true;
+                    if(navigator.vibrate) navigator.vibrate(500);
                 }
             });
         }
-
-        function updateBadge(type, text) {
-            const badge = document.getElementById('safety-badge');
-            badge.className = 'status-center'; // Reset class
-            badge.innerText = text;
-            
-            if(type === 'waiting') badge.classList.add('st-wait');
-            if(type === 'safe') badge.classList.add('st-safe');
-            if(type === 'danger') badge.classList.add('st-danger');
-        }
-
-        function startWorking() {
-            // Hành động khi nút Bắt đầu được bấm
-            if(confirm("Xác nhận bắt đầu công việc?")) {
-                alert("Đã ghi log bắt đầu công việc.");
-                // Code thêm: Gửi thời gian bắt đầu lên Firebase để lưu hồ sơ
-            }
-        }
-
     </script>
 </body>
 </html>
