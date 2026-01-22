@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Safety Check - Jitsi Free</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+    
+    <script src='https://meet.jit.si/external_api.js'></script>
+
+    <style>
+        body { background: #f0f2f5; font-family: 'Segoe UI', sans-serif; }
+        
+        /* Khung chứa Video Jitsi */
+        #jitsi-container {
+            height: 60vh; /* Chiếm 60% chiều cao màn hình */
+            width: 100%;
+            background: #000;
+            border-bottom: 4px solid #ddd;
+        }
+
+        /* Khu vực điều khiển bên dưới */
+        .control-panel {
+            padding: 20px;
+            background: white;
+            border-top-left-radius: 20px;
+            border-top-right-radius: 20px;
+            margin-top: -20px;
+            position: relative;
+            z-index: 10;
+            min-height: 40vh;
+        }
+
+        /* Trạng thái */
+        .status-box {
+            text-align: center;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: bold;
+            font-size: 1.1rem;
+            text-transform: uppercase;
+        }
+        .st-waiting { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+        .st-safe { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .st-danger { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; animation: blinkRed 1s infinite; }
+
+        @keyframes blinkRed { 50% { opacity: 0.7; } }
+        
+        .role-select {
+            position: fixed; top:0; left:0; width:100%; height:100%;
+            background: white; z-index: 9999;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+        }
+        
+        .btn-action { height: 60px; font-size: 1.2rem; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+
+    <div id="roleSelect" class="role-select">
+        <h3 class="mb-4 text-primary">CHỌN VAI TRÒ</h3>
+        <button class="btn btn-primary btn-lg mb-3 w-75" onclick="joinRoom('field')">
+            <i class="fas fa-hard-hat"></i> Đội Hiện Trường
+        </button>
+        <button class="btn btn-dark btn-lg w-75" onclick="joinRoom('monitor')">
+            <i class="fas fa-desktop"></i> Giám Sát Viên
+        </button>
+        <p class="mt-4 text-muted small">Server: Jitsi Public (Free) | Data: Firebase</p>
+    </div>
+
+    <div id="mainApp" style="display:none;">
+        <div id="jitsi-container"></div>
+
+        <div class="control-panel shadow">
+            
+            <div id="statusDisplay" class="status-box st-waiting">
+                <i class="fas fa-spinner fa-spin"></i> Đang chờ kết nối...
+            </div>
+
+            <div id="monitorControls" style="display:none;">
+                <div class="row">
+                    <div class="col-6">
+                        <button class="btn btn-danger w-100 btn-action" onclick="setStatus('danger')">
+                            <i class="fas fa-ban"></i> CẢNH BÁO
+                        </button>
+                    </div>
+                    <div class="col-6">
+                        <button class="btn btn-success w-100 btn-action" onclick="setStatus('safe')">
+                            <i class="fas fa-check"></i> XÁC NHẬN
+                        </button>
+                    </div>
+                </div>
+                <div class="text-muted small text-center">
+                    *Quan sát kỹ video trước khi xác nhận.
+                </div>
+            </div>
+
+            <div id="fieldControls" style="display:none;">
+                <button id="btnStartJob" class="btn btn-secondary w-100 btn-action" disabled onclick="startJobAction()">
+                    <i class="fas fa-tools"></i> BẮT ĐẦU CÔNG VIỆC
+                </button>
+                <div id="fieldInstruction" class="text-center mt-2">
+                    Giữ camera ổn định để giám sát kiểm tra.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CẤU HÌNH ---
+        const firebaseConfig = {
+             apiKey: "AIzaSyCzWjfcD5Dgq7V-i2izb9tKLR6QM6qWPQo", 
+             authDomain: "tavietnam-78ae8.firebaseapp.com", 
+             projectId: "tavietnam-78ae8", 
+             storageBucket: "tavietnam-78ae8.firebasestorage.app", 
+             messagingSenderId: "670121705534", 
+             appId: "1:670121705534:web:1027ad98550573ad37116f"
+        };
+        
+        // Tên phòng họp (Nên đặt random hoặc theo mã công trình để tránh người lạ vào)
+        // Ví dụ: VDC_Project_Safety_01
+        const ROOM_NAME = "VDC_Safety_Demo_Room_123";
+
+        // --- KHỞI TẠO ---
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        let api = null; // Biến giữ Jitsi API
+
+        // --- HÀM XỬ LÝ ---
+
+        function joinRoom(role) {
+            document.getElementById('roleSelect').style.display = 'none';
+            document.getElementById('mainApp').style.display = 'block';
+
+            // 1. Cấu hình Jitsi
+            const domain = 'meet.jit.si';
+            const options = {
+                roomName: ROOM_NAME,
+                width: '100%',
+                height: '100%',
+                parentNode: document.querySelector('#jitsi-container'),
+                lang: 'vi',
+                configOverwrite: { 
+                    startWithAudioMuted: false, 
+                    startWithVideoMuted: false,
+                    prejoinPageEnabled: false // Vào thẳng phòng không cần hỏi
+                },
+                interfaceConfigOverwrite: {
+                    // Ẩn bớt các nút không cần thiết để giao diện gọn
+                    TOOLBAR_BUTTONS: [
+                        'microphone', 'camera', 'fullscreen', 'hangup', 'tileview'
+                    ],
+                    MOBILE_APP_PROMO: false
+                }
+            };
+
+            // Tạo phòng Jitsi
+            api = new JitsiMeetExternalAPI(domain, options);
+
+            // Xử lý riêng từng vai trò
+            if (role === 'monitor') {
+                document.getElementById('monitorControls').style.display = 'block';
+                // Giám sát vào thì tắt mic/cam của chính mình để đỡ ồn
+                api.executeCommand('toggleAudio');
+                api.executeCommand('toggleVideo');
+            } else {
+                document.getElementById('fieldControls').style.display = 'block';
+                // Reset trạng thái về Waiting khi phiên mới bắt đầu
+                setStatus('waiting');
+            }
+
+            // Bắt đầu lắng nghe lệnh từ Firebase
+            listenStatus(role);
+        }
+
+        function setStatus(status) {
+            // Ghi trạng thái lên Firebase
+            db.ref('safety_check/' + ROOM_NAME).set({
+                status: status,
+                timestamp: Date.now()
+            });
+        }
+
+        function listenStatus(role) {
+            const statusBox = document.getElementById('statusDisplay');
+            const btnStart = document.getElementById('btnStartJob');
+            const instruction = document.getElementById('fieldInstruction');
+
+            db.ref('safety_check/' + ROOM_NAME).on('value', (snapshot) => {
+                const data = snapshot.val();
+                const status = data ? data.status : 'waiting';
+
+                // Xóa class cũ
+                statusBox.className = 'status-box';
+
+                if (status === 'waiting') {
+                    statusBox.innerHTML = '<i class="fas fa-clock"></i> ĐANG CHỜ GIÁM SÁT';
+                    statusBox.classList.add('st-waiting');
+                    if (role === 'field') {
+                        btnStart.disabled = true;
+                        btnStart.classList.replace('btn-primary', 'btn-secondary');
+                    }
+                } else if (status === 'safe') {
+                    statusBox.innerHTML = '<i class="fas fa-shield-alt"></i> AN TOÀN - ĐƯỢC PHÉP';
+                    statusBox.classList.add('st-safe');
+                    if (role === 'field') {
+                        btnStart.disabled = false;
+                        btnStart.classList.replace('btn-secondary', 'btn-primary');
+                        instruction.innerText = "Đã được xác nhận. Mời bấm Bắt Đầu.";
+                    }
+                } else if (status === 'danger') {
+                    statusBox.innerHTML = '<i class="fas fa-exclamation-triangle"></i> NGUY HIỂM - DỪNG LẠI';
+                    statusBox.classList.add('st-danger');
+                    if (role === 'field') {
+                        btnStart.disabled = true;
+                        btnStart.classList.replace('btn-primary', 'btn-secondary');
+                        // Rung điện thoại cảnh báo
+                        if(navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 300]);
+                    }
+                }
+            });
+        }
+
+        function startJobAction() {
+            // Xử lý khi đội hiện trường bấm bắt đầu
+            if(confirm("Xác nhận bắt đầu công việc? Hệ thống sẽ ghi log thời gian.")) {
+                alert("Đã bắt đầu công việc! Chúc an toàn.");
+                // Tại đây bạn có thể code thêm lưu log vào Firebase
+            }
+        }
+
+    </script>
+</body>
+</html>
