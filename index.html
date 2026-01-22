@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>VDC Safety V9.0 (Audio Fix)</title>
+    <title>VDC Safety Check V2.0</title>
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
@@ -13,385 +13,259 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
 
     <style>
-        body, html { height: 100%; margin: 0; background: #f4f6f8; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+        body, html { height: 100%; margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
         
-        /* === SETUP & DASHBOARD === */
-        #setup-screen, #dashboard-screen { 
-            position: absolute; top:0; left:0; width:100%; height:100%; 
-            background: #fff; z-index: 2000; overflow-y: auto;
-        }
-        .live-card { border-left: 5px solid #28a745; cursor: pointer; transition: 0.2s; }
-        .live-card:active { transform: scale(0.98); background: #e9ecef; }
-        .offline-card { border-left: 5px solid #6c757d; opacity: 0.7; }
-
-        /* === MAIN APP === */
-        #main-app { position: absolute; top:0; left:0; width:100%; height:100%; background: #000; z-index: 1000; }
-        
-        #video-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        #video-wrapper { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; background: #111; }
         video { width: 100%; height: 100%; object-fit: cover; }
 
-        /* Nút Bật Tiếng To Đùng (Giống V1.6) */
-        #audio-unlock-overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.8); z-index: 200;
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
-        }
-        .pulse-btn { animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
-
-        /* UI Layer */
         #ui-layer {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-            z-index: 100; pointer-events: none; 
-            display: flex; flex-direction: column; justify-content: space-between;
+            z-index: 10; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between;
         }
-        .interactive { pointer-events: auto !important; }
-
-        /* Upload Screen */
-        #upload-screen {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.95); z-index: 3000;
-            display: flex; flex-direction: column; justify-content: center; align-items: center; color: white;
+        
+        .top-bar { 
+            background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+            padding: 15px; color: white; display: flex; justify-content: space-between; pointer-events: auto; 
         }
 
-        .btn-xl { height: 60px; font-weight: bold; font-size: 1.1rem; border-radius: 12px; }
+        .room-tag {
+            background: rgba(255,255,255,0.2); padding: 5px 10px; border-radius: 4px; font-size: 0.8rem;
+        }
+        
+        .status-badge { 
+            padding: 10px 30px; border-radius: 50px; font-weight: 900; letter-spacing: 1px;
+            background: #fff; color: #000; align-self: center; text-transform: uppercase;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5); transform: scale(0.9); transition: all 0.3s;
+        }
+        .st-safe { background: #00C851; color: white; transform: scale(1.1); border: 2px solid white; }
+        .st-danger { background: #ff4444; color: white; animation: pulse 0.5s infinite; }
+
+        .bottom-controls { background: linear-gradient(to top, rgba(0,0,0,0.9), transparent); padding: 20px; pointer-events: auto; }
+        
+        .btn-xl { height: 60px; font-size: 1.1rem; font-weight: bold; border-radius: 12px; }
         .hidden { display: none !important; }
-        .rec-dot { width: 10px; height: 10px; background: red; border-radius: 50%; display: inline-block; animation: blink 1s infinite; }
-        @keyframes blink { 50% { opacity: 0; } }
+
+        /* Màn hình chụp ảnh bằng chứng */
+        #snapshot-preview {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 9999;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+        }
+        #snapshot-img { max-width: 90%; max-height: 70%; border: 3px solid #fff; border-radius: 8px; }
+
+        #setup-screen {
+            position: fixed; z-index: 9999; background: #f8f9fa; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px;
+        }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } }
     </style>
 </head>
 <body>
 
-    <div id="setup-screen" class="d-flex flex-column justify-content-center align-items-center p-4">
-        <h2 class="fw-bold text-primary mb-4">VDC SAFETY V9.0</h2>
-        <div class="d-grid gap-3 w-100" style="max-width: 400px;">
-            <button class="btn btn-primary btn-lg shadow py-3" onclick="showStreamerInput()">
-                <i class="fas fa-video"></i> ĐỘI HIỆN TRƯỜNG
-            </button>
-            <button class="btn btn-dark btn-lg shadow py-3" onclick="openDashboard()">
-                <i class="fas fa-columns"></i> GIÁM SÁT VIÊN
-            </button>
+    <div id="setup-screen">
+        <h2 class="mb-2 text-primary fw-bold">VDC SAFETY LINK</h2>
+        <div class="input-group mb-4 w-75 shadow-sm">
+            <span class="input-group-text bg-white"><i class="fas fa-map-marker-alt"></i></span>
+            <input type="text" id="room-input" class="form-control form-control-lg" placeholder="Nhập tên trạm/tổ...">
         </div>
-
-        <div id="streamer-input" class="hidden w-100 mt-4" style="max-width: 400px;">
-            <label class="fw-bold">Nhập tên Trạm:</label>
-            <input type="text" id="room-name" class="form-control form-control-lg mb-3" placeholder="Ví dụ: Tram Bien Hoa">
-            <button class="btn btn-success w-100 btn-lg" onclick="startStreamerSession()">BẮT ĐẦU PHÁT</button>
-            <button class="btn btn-link w-100 mt-2" onclick="location.reload()">Quay lại</button>
-        </div>
-    </div>
-
-    <div id="dashboard-screen" class="hidden">
-        <div class="sticky-top bg-white shadow-sm p-3 d-flex justify-content-between align-items-center">
-            <h5 class="m-0 fw-bold text-danger">TRUNG TÂM GIÁM SÁT</h5>
-            <button class="btn btn-sm btn-outline-secondary" onclick="location.reload()">Thoát</button>
-        </div>
-        <div class="container py-3">
-            <h6 class="text-muted fw-bold mb-3"><i class="fas fa-satellite-dish"></i> ĐANG TRỰC TUYẾN</h6>
-            <div id="live-list" class="d-grid gap-3">
-                <div class="text-center py-5 text-muted">Đang quét tín hiệu...</div>
-            </div>
-            
-            <h6 class="text-muted fw-bold mt-5 mb-3"><i class="fas fa-history"></i> ĐÃ KẾT THÚC</h6>
-            <div id="history-list" class="d-grid gap-3 opacity-75"></div>
-        </div>
+        
+        <button class="btn btn-primary btn-lg mb-3 w-100 shadow" onclick="initApp('streamer')">
+            <i class="fas fa-video"></i> TÔI LÀ ĐỘI HIỆN TRƯỜNG
+        </button>
+        <button class="btn btn-dark btn-lg w-100 shadow" onclick="initApp('viewer')">
+            <i class="fas fa-user-shield"></i> TÔI LÀ GIÁM SÁT
+        </button>
+        <p class="mt-4 text-muted small">V2.0 - Production Ready</p>
     </div>
 
     <div id="main-app" class="hidden">
-        <div id="video-container">
-            <video id="remote-video" autoplay playsinline muted class="hidden"></video>
+        <div id="video-wrapper">
+            <video id="remote-video" autoplay playsinline class="hidden"></video>
             <video id="local-video" autoplay playsinline muted class="hidden"></video>
         </div>
 
-        <div id="audio-unlock-overlay" class="hidden interactive">
-            <h3 class="text-white mb-4 fw-bold" id="join-name">...</h3>
-            <button class="btn btn-success btn-lg rounded-pill px-5 py-4 shadow pulse-btn" onclick="confirmAndUnmute()">
-                <i class="fas fa-volume-up fa-2x"></i><br>BẤM ĐỂ NGHE & XEM
-            </button>
-            <p class="text-white-50 mt-3 small">Bắt buộc bấm để kích hoạt loa</p>
-        </div>
-
         <div id="ui-layer">
-            <div class="p-3 interactive d-flex justify-content-between align-items-start" style="background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);">
+            <div class="top-bar">
                 <div>
-                    <span id="rec-badge" class="badge bg-danger hidden"><span class="rec-dot"></span> REC</span>
-                    <span id="room-badge" class="badge bg-dark ms-1">...</span>
+                    <div id="role-lbl" class="fw-bold">...</div>
+                    <div id="room-lbl" class="room-tag mt-1">...</div>
                 </div>
-                <button class="btn btn-sm btn-light interactive" onclick="location.reload()">Thoát</button>
+                <button class="btn btn-sm btn-outline-light" onclick="location.reload()"><i class="fas fa-sign-out-alt"></i> Thoát</button>
             </div>
+            
+            <div id="status-badge" class="status-badge">Đang kết nối...</div>
 
-            <div class="p-3 interactive" style="background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);">
+            <div class="bottom-controls">
                 <div id="viewer-btns" class="hidden row g-2">
-                    <div class="col-6"><button class="btn btn-danger btn-xl w-100 shadow interactive" onclick="sendCmd('danger')">CẢNH BÁO</button></div>
-                    <div class="col-6"><button class="btn btn-success btn-xl w-100 shadow interactive" onclick="sendCmd('safe')">XÁC NHẬN</button></div>
-                    <div class="col-12 text-center text-white-50 small mt-1">Đang ghi hình tại hiện trường.</div>
+                    <div class="col-6"><button class="btn btn-danger btn-xl shadow" onclick="confirmAction('danger')">CẢNH BÁO</button></div>
+                    <div class="col-6"><button class="btn btn-success btn-xl shadow" onclick="confirmAction('safe')">XÁC NHẬN</button></div>
                 </div>
-
                 <div id="streamer-btns" class="hidden">
-                    <button class="btn btn-danger btn-xl w-100 shadow interactive mb-2" onclick="stopStreamerSession()">
-                        <i class="fas fa-stop"></i> KẾT THÚC & LƯU
-                    </button>
-                    <button id="status-btn" class="btn btn-secondary w-100 interactive" disabled>Đang chờ...</button>
+                    <button id="btn-work" class="btn btn-secondary btn-xl w-100 shadow" disabled>CHỜ DUYỆT ĐỂ BẮT ĐẦU</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <div id="upload-screen" class="hidden">
-        <h3 class="fw-bold text-warning">ĐANG LƯU VIDEO...</h3>
-        <p>Vui lòng chờ. Không tắt trình duyệt.</p>
-        <div class="progress w-75 my-3" style="height: 20px;">
-            <div id="prog-bar" class="progress-bar bg-success" style="width: 0%"></div>
-        </div>
-        <div id="prog-text">0%</div>
-        <div id="rescue-btn" class="hidden mt-4 text-center">
-            <p class="text-danger small">Lỗi mạng! Hãy lưu về máy.</p>
-            <button class="btn btn-light interactive shadow" onclick="saveLocally()">LƯU VỀ MÁY</button>
-        </div>
+    <div id="snapshot-preview" class="hidden">
+        <h4 class="text-white mb-3">📸 BẰNG CHỨNG ĐÃ LƯU</h4>
+        <img id="snapshot-img" src="" alt="Proof">
+        <div class="text-white mt-2 small" id="snap-time"></div>
+        <button class="btn btn-primary mt-4 px-5" onclick="closeSnapshot()">Đóng</button>
     </div>
 
     <script>
         // === CONFIG ===
-        const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwfbO0QC6-uklzUOMpuGKJkm_lU-RNuGVSO30zBZWFj6a3z3nWIydcLCNESO89q1Hq-HQ/exec";
         const firebaseConfig = {
             apiKey: "AIzaSyDa_tWnugqGRTM5nL-I9n4iIFgv1JIIUIc",
             authDomain: "livestream-2e250.firebaseapp.com",
             projectId: "livestream-2e250",
             storageBucket: "livestream-2e250.firebasestorage.app",
             messagingSenderId: "151196286205",
-            appId: "1:151196286205:web:c06c4fe1745fee7a5ed294"
+            appId: "1:151196286205:web:c06c4fe1745fee7a5ed294",
+            measurementId: "G-FTJYJ89SZH"
         };
 
+        // === INIT ===
         if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
-        
-        let peer, ROOM_ID = '', role = '';
-        let mediaRecorder, recordedChunks = [];
-        let targetStreamerID = '';
+        let peer, role = '', ROOM_ID = '';
 
-        // === NAVIGATION ===
-        function showStreamerInput() {
-            document.querySelector('#setup-screen .d-grid').classList.add('hidden');
-            document.getElementById('streamer-input').classList.remove('hidden');
-        }
+        // Tự động lấy ID từ URL (VD: index.html?id=TRAM1)
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlID = urlParams.get('id');
+        if(urlID) document.getElementById('room-input').value = urlID;
 
-        function openDashboard() {
-            document.getElementById('setup-screen').classList.add('hidden');
-            document.getElementById('dashboard-screen').classList.remove('hidden');
-            listenDashboard();
-        }
-
-        // === DASHBOARD LOGIC ===
-        function listenDashboard() {
-            db.ref('vdc_ops').on('value', snap => {
-                const liveList = document.getElementById('live-list');
-                const histList = document.getElementById('history-list');
-                liveList.innerHTML = ''; histList.innerHTML = '';
-                let hasLive = false;
-
-                snap.forEach(child => {
-                    const d = child.val();
-                    const rid = child.key;
-                    const name = rid.replace('VDC_', '').replace(/_/g, ' ');
-                    
-                    if (d.status === 'live') {
-                        hasLive = true;
-                        liveList.innerHTML += `
-                            <div class="card live-card p-3 shadow-sm mb-2" onclick="prepareJoinRoom('${rid}', '${name}', '${d.streamerID}')">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <h5 class="fw-bold m-0">${name}</h5>
-                                    <span class="badge bg-danger blink">LIVE</span>
-                                </div>
-                                <small class="text-success"><i class="fas fa-check-circle"></i> Đang phát</small>
-                            </div>`;
-                    } else if (d.status === 'ended' || d.status === 'offline') {
-                        let link = d.driveLink ? `<a href="${d.driveLink}" target="_blank" class="text-primary mt-1 d-block small">Xem trên Drive</a>` : '<span class="text-muted small">Lưu cục bộ</span>';
-                        histList.innerHTML += `
-                            <div class="card offline-card p-2 mb-2 bg-light">
-                                <div class="d-flex justify-content-between">
-                                    <span class="fw-bold">${name}</span>
-                                    <span class="badge bg-secondary">Kết thúc</span>
-                                </div>
-                                ${link}
-                            </div>`;
-                    }
-                });
-                
-                if(!hasLive) liveList.innerHTML = '<div class="text-center text-muted p-4">Không có trạm nào online.</div>';
-            });
-        }
-
-        // === VIEWER LOGIC (GIÁM SÁT) ===
-        function prepareJoinRoom(rid, rname, sid) {
-            ROOM_ID = rid;
-            targetStreamerID = sid;
-            document.getElementById('dashboard-screen').classList.add('hidden');
-            document.getElementById('main-app').classList.remove('hidden');
-            document.getElementById('room-badge').innerText = rname;
+        function initApp(r) {
+            const inputID = document.getElementById('room-input').value.trim();
+            if(!inputID) return alert("Vui lòng nhập tên Trạm/Tổ làm việc!");
             
-            // Hiện màn hình xác nhận để kích hoạt Audio
-            document.getElementById('audio-unlock-overlay').classList.remove('hidden');
-            document.getElementById('join-name').innerText = rname;
-        }
-
-        function confirmAndUnmute() {
-            document.getElementById('audio-unlock-overlay').classList.add('hidden');
-            document.getElementById('remote-video').classList.remove('hidden');
-            document.getElementById('viewer-btns').classList.remove('hidden');
-            initViewer();
-        }
-
-        function initViewer() {
-            // Config STUN Google
-            peer = new Peer({ config: { 'iceServers': [{ url: 'stun:stun.l.google.com:19302' }] } });
-            peer.on('open', () => {
-                connectTo(targetStreamerID);
-            });
-        }
-
-        // QUAN TRỌNG: KỸ THUẬT DUMMY STREAM CỦA V1.6
-        function connectTo(id) {
-            // Tạo luồng giả để gửi đi (Handshake)
-            const canvas = document.createElement('canvas'); 
-            const dummyStream = canvas.captureStream(10);
-            
-            // Gọi cho Streamer kèm luồng giả
-            const call = peer.call(id, dummyStream);
-            
-            call.on('stream', stream => {
-                const vid = document.getElementById('remote-video');
-                vid.srcObject = stream;
-                
-                // MỞ KHÓA ÂM THANH
-                vid.muted = false; // Bật tiếng
-                vid.volume = 1.0;
-                vid.play().catch(e => console.log("Audio play error", e));
-            });
-        }
-
-        function sendCmd(type) { db.ref('vdc_ops/' + ROOM_ID).update({ signal: type }); }
-
-
-        // === STREAMER LOGIC (HIỆN TRƯỜNG) ===
-        async function startStreamerSession() {
-            const name = document.getElementById('room-name').value.trim();
-            if(!name) return alert("Nhập tên trạm!");
-            ROOM_ID = "VDC_" + name.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase();
+            // Format ID để tránh ký tự lạ
+            ROOM_ID = "VDC_" + inputID.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase();
+            role = r;
 
             document.getElementById('setup-screen').classList.add('hidden');
             document.getElementById('main-app').classList.remove('hidden');
-            document.getElementById('streamer-btns').classList.remove('hidden');
+            document.getElementById('role-lbl').innerText = role === 'streamer' ? "🎥 ĐỘI HIỆN TRƯỜNG" : "🛡️ GIÁM SÁT VIÊN";
+            document.getElementById('room-lbl').innerText = "ID: " + inputID;
+
+            listenSig();
+
+            // WebRTC Config (STUN Google)
+            const peerConfig = { config: { 'iceServers': [{ url: 'stun:stun.l.google.com:19302' }] } };
+            
+            if (role === 'streamer') startStreamer(peerConfig);
+            else startViewer(peerConfig);
+        }
+
+        // === CORE LOGIC ===
+        async function startStreamer(config) {
             document.getElementById('local-video').classList.remove('hidden');
-            document.getElementById('room-badge').innerText = name;
-
+            document.getElementById('streamer-btns').classList.remove('hidden');
+            
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: true });
                 document.getElementById('local-video').srcObject = stream;
-                startRecording(stream);
 
-                peer = new Peer({ config: { 'iceServers': [{ url: 'stun:stun.l.google.com:19302' }] } });
-                
+                peer = new Peer(config);
                 peer.on('open', id => {
-                    const roomRef = db.ref('vdc_ops/' + ROOM_ID);
-                    roomRef.set({
-                        streamerID: id,
-                        status: 'live',
-                        signal: 'waiting',
-                        timestamp: Date.now()
-                    });
-                    // Tự động offline khi mất kết nối
-                    roomRef.onDisconnect().update({ status: 'offline' });
+                    db.ref('vdc_ops/' + ROOM_ID).update({ streamerID: id, active: true });
                 });
-
-                peer.on('call', call => {
-                    // Trả lời cuộc gọi từ Viewer
-                    call.answer(stream);
-                });
-
-                db.ref('vdc_ops/' + ROOM_ID + '/signal').on('value', snap => {
-                    const s = snap.val();
-                    const btn = document.getElementById('status-btn');
-                    if(s === 'safe') { btn.className = "btn btn-primary w-100 interactive fw-bold"; btn.innerText = "ĐÃ DUYỆT AN TOÀN"; } 
-                    else if(s === 'danger') { btn.className = "btn btn-danger w-100 interactive fw-bold"; btn.innerText = "CẢNH BÁO NGUY HIỂM!"; navigator.vibrate([500,200,500]); }
-                });
-
-            } catch(e) { alert("Lỗi Cam: " + e.message); }
+                peer.on('call', call => call.answer(stream));
+            } catch (e) { alert("Lỗi Camera: " + e.message); }
         }
 
-        function startRecording(stream) {
-            recordedChunks = [];
-            // Dùng codec VP8 nhẹ cho web
-            let options = { mimeType: 'video/webm;codecs=vp8', videoBitsPerSecond: 250000 };
-            if (!MediaRecorder.isTypeSupported(options.mimeType)) options = { mimeType: 'video/mp4' };
+        function startViewer(config) {
+            document.getElementById('remote-video').classList.remove('hidden');
+            document.getElementById('viewer-btns').classList.remove('hidden');
 
-            try {
-                mediaRecorder = new MediaRecorder(stream, options);
-                mediaRecorder.ondataavailable = e => { if(e.data.size > 0) recordedChunks.push(e.data); };
-                mediaRecorder.onstop = uploadVideo;
-                mediaRecorder.start(1000);
-                document.getElementById('rec-badge').classList.remove('hidden');
-            } catch(e) { console.error(e); }
+            peer = new Peer(config);
+            peer.on('open', () => {
+                db.ref('vdc_ops/' + ROOM_ID).on('value', snap => {
+                    const d = snap.val();
+                    if (d && d.streamerID) connect(d.streamerID);
+                });
+            });
         }
 
-        function stopStreamerSession() {
-            if(confirm("Kết thúc công việc?")) {
-                if(mediaRecorder) mediaRecorder.stop();
-                db.ref('vdc_ops/' + ROOM_ID).update({ status: 'ended' });
+        let currCall;
+        function connect(id) {
+            if (currCall) return;
+            // Dummy Stream trick (Bắt buộc để xuyên NAT)
+            const canvas = document.createElement('canvas'); canvas.width=10; canvas.height=10;
+            const dummy = canvas.captureStream(30);
+            
+            const call = peer.call(id, dummy);
+            currCall = call;
+
+            call.on('stream', stream => {
+                const vid = document.getElementById('remote-video');
+                vid.srcObject = stream;
+                vid.play().catch(() => { /* Auto play block handling if needed */ });
+            });
+        }
+
+        // === SAFETY & EVIDENCE ===
+        function confirmAction(type) {
+            if(type === 'safe') {
+                if(confirm("XÁC NHẬN AN TOÀN?\nHệ thống sẽ chụp ảnh màn hình làm bằng chứng.")) {
+                    takeSnapshot(); // Chụp ảnh trước
+                    db.ref('vdc_ops/' + ROOM_ID + '/status').set('safe');
+                }
+            } else {
+                db.ref('vdc_ops/' + ROOM_ID + '/status').set('danger');
             }
         }
 
-        // === UPLOAD LOGIC ===
-        function uploadVideo() {
-            document.getElementById('upload-screen').classList.remove('hidden');
-            const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        function listenSig() {
+            const badge = document.getElementById('status-badge');
+            const btn = document.getElementById('btn-work');
+
+            db.ref('vdc_ops/' + ROOM_ID + '/status').on('value', snap => {
+                const s = snap.val() || 'waiting';
+                
+                // Reset styling
+                badge.className = 'status-badge'; 
+                
+                if(s === 'safe') {
+                    badge.innerText = "✅ ĐÃ DUYỆT AN TOÀN";
+                    badge.classList.add('st-safe');
+                    btn.disabled = false;
+                    btn.innerText = "BẮT ĐẦU CÔNG VIỆC";
+                    btn.className = "btn btn-primary btn-xl w-100 shadow";
+                } else if (s === 'danger') {
+                    badge.innerText = "⛔ DỪNG LẠI NGAY";
+                    badge.classList.add('st-danger');
+                    btn.disabled = true;
+                    btn.innerText = "NGUY HIỂM!";
+                    btn.className = "btn btn-secondary btn-xl w-100 shadow";
+                    if(navigator.vibrate) navigator.vibrate([500,200,500]);
+                } else {
+                    badge.innerText = "⏳ CHỜ KIỂM TRA";
+                    btn.disabled = true;
+                }
+            });
+        }
+
+        // === SNAPSHOT FEATURE ===
+        function takeSnapshot() {
+            const vid = document.getElementById('remote-video');
+            const canvas = document.createElement('canvas');
+            canvas.width = vid.videoWidth;
+            canvas.height = vid.videoHeight;
+            canvas.getContext('2d').drawImage(vid, 0, 0);
             
-            // > 40MB thì lưu cục bộ
-            if(blob.size > 40 * 1024 * 1024) { failUpload(); return; }
+            const dataURL = canvas.toDataURL('image/png');
+            
+            // Hiển thị Preview
+            document.getElementById('snapshot-img').src = dataURL;
+            document.getElementById('snap-time').innerText = "Thời gian: " + new Date().toLocaleString();
+            document.getElementById('snapshot-preview').classList.remove('hidden');
 
-            const reader = new FileReader();
-            reader.readAsDataURL(blob);
-            reader.onloadend = function() {
-                const base64data = reader.result.split(',')[1];
-                const fileName = `${ROOM_ID}_${Date.now()}.webm`;
-
-                const xhr = new XMLHttpRequest();
-                xhr.open("POST", APPS_SCRIPT_URL, true);
-                xhr.setRequestHeader('Content-Type', 'text/plain;charset=utf-8');
-                xhr.timeout = 120000;
-
-                xhr.upload.onprogress = e => {
-                    if (e.lengthComputable) {
-                        const p = Math.round((e.loaded / e.total) * 100);
-                        document.getElementById('prog-bar').style.width = p + "%";
-                        document.getElementById('prog-text').innerText = p + "%";
-                    }
-                };
-
-                xhr.onload = () => {
-                    if(xhr.status === 200) {
-                        const res = JSON.parse(xhr.responseText);
-                        if(res.result === 'success') {
-                            db.ref('vdc_ops/' + ROOM_ID).update({ driveLink: res.fileUrl });
-                            alert("✅ Thành công!"); location.reload();
-                        } else failUpload();
-                    } else failUpload();
-                };
-                xhr.onerror = failUpload; xhr.ontimeout = failUpload;
-                xhr.send(JSON.stringify({ fileData: base64data, fileName: fileName, mimeType: 'video/webm' }));
-            };
+            // TODO: Ở bước này có thể code thêm upload ảnh lên Firebase Storage nếu cần
         }
 
-        function failUpload() {
-            document.getElementById('prog-text').innerText = "Thất bại.";
-            document.getElementById('rescue-btn').classList.remove('hidden');
-        }
-
-        function saveLocally() {
-            const blob = new Blob(recordedChunks, { type: 'video/webm' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = `${ROOM_ID}_Backup.webm`;
-            document.body.appendChild(a); a.click();
+        function closeSnapshot() {
+            document.getElementById('snapshot-preview').classList.add('hidden');
         }
     </script>
 </body>
