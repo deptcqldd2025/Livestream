@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>VDC Safety V5.0 (Source Rec)</title>
+    <title>VDC Safety V5.1 (Stable)</title>
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
@@ -14,22 +14,13 @@
 
     <style>
         body, html { height: 100%; margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
-        
         #video-wrapper { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; background: #111; }
         video { width: 100%; height: 100%; object-fit: cover; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; }
+        
+        #audio-btn-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 50; pointer-events: auto; }
 
-        #ui-layer {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-            z-index: 10; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between;
-        }
-
-        /* Nút Bật Loa cho Giám sát */
-        #audio-btn-overlay {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            z-index: 50; pointer-events: auto;
-        }
-
-        /* Màn hình Upload (Chỉ hiện cho Đội hiện trường) */
+        /* MÀN HÌNH UPLOAD */
         #upload-screen {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 9999;
             display: flex; flex-direction: column; justify-content: center; align-items: center; color: white; padding: 20px;
@@ -46,50 +37,57 @@
         .hidden { display: none !important; }
         .btn-xl { height: 60px; font-weight: bold; font-size: 1.1rem; border-radius: 12px; }
 
-        #setup-screen {
-            position: fixed; z-index: 9999; background: #fff; width: 100%; height: 100%;
-            display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px;
-        }
+        #setup-screen { position: fixed; z-index: 9999; background: #fff; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; }
     </style>
 </head>
 <body>
 
     <div id="setup-screen">
-        <h3 class="fw-bold text-primary mb-3">VDC SAFETY V5.0</h3>
-        <p class="text-muted small">Ghi hình tại nguồn & Upload tự động</p>
-        <input type="text" id="room-input" class="form-control form-control-lg mb-3 w-75 shadow-sm" placeholder="Tên Trạm/Tổ...">
+        <h3 class="fw-bold text-primary mb-3">VDC SAFETY V5.1</h3>
+        <p class="text-muted small">Tối ưu dung lượng & Chế độ cứu hộ</p>
+        <input type="text" id="room-input" class="form-control form-control-lg mb-3 w-75 shadow-sm" placeholder="Nhập tên Trạm/Tổ...">
         <button class="btn btn-primary btn-lg w-100 mb-2 shadow" onclick="initApp('streamer')">ĐỘI HIỆN TRƯỜNG</button>
         <button class="btn btn-dark btn-lg w-100 shadow" onclick="initApp('viewer')">GIÁM SÁT VIÊN</button>
     </div>
 
     <div id="upload-screen" class="hidden">
-        <h3 class="text-warning fw-bold">ĐANG GỬI BÁO CÁO...</h3>
-        <p class="small text-white-50 mt-2 text-center">Video bằng chứng đang được tải lên Google Drive.</p>
-        <p class="text-danger fw-bold border border-danger p-2 rounded">⛔ KHÔNG ĐƯỢC TẮT TRÌNH DUYỆT!</p>
-        <h1 id="percent-txt" class="fw-bold my-3">0%</h1>
-        <div class="progress w-75">
-            <div id="prog-bar" class="progress-bar" style="width: 0%"></div>
+        <div id="upload-content" class="text-center w-100">
+            <h3 class="text-warning fw-bold">ĐANG GỬI BÁO CÁO...</h3>
+            <p class="small text-white-50 mt-2">Đang tải lên Google Drive (Vui lòng chờ)</p>
+            <h1 id="percent-txt" class="fw-bold my-3">0%</h1>
+            <div class="progress w-75 mx-auto">
+                <div id="prog-bar" class="progress-bar" style="width: 0%"></div>
+            </div>
+            <div id="upload-detail" class="mt-2 text-white-50 small">...</div>
         </div>
-        <div id="upload-detail" class="mt-2 text-white-50 small">...</div>
+
+        <div id="rescue-mode" class="hidden text-center mt-4 border border-danger p-3 rounded bg-dark">
+            <h4 class="text-danger"><i class="fas fa-exclamation-triangle"></i> LỖI MẠNG!</h4>
+            <p class="small text-white">Không thể gửi lên Google Drive do mạng yếu hoặc file quá lớn.</p>
+            <button class="btn btn-success btn-lg w-100 shadow pulse-btn" onclick="downloadLocally()">
+                <i class="fas fa-download"></i> TẢI VIDEO VỀ MÁY NGAY
+            </button>
+            <p class="small text-muted mt-2">Bấm tải về để lưu bằng chứng vào điện thoại.</p>
+            <button class="btn btn-outline-light btn-sm mt-3" onclick="location.reload()">Làm mới trang</button>
+        </div>
     </div>
 
     <div id="main-app" class="hidden">
         <div id="video-wrapper">
             <video id="remote-video" autoplay playsinline class="hidden"></video>
             <video id="local-video" autoplay playsinline muted class="hidden"></video>
-            
             <div id="audio-btn-overlay" class="hidden">
                 <button class="btn btn-light rounded-circle shadow" style="width: 70px; height: 70px;" onclick="unmuteAudio()">
                     <i class="fas fa-volume-up fa-2x text-danger"></i>
                 </button>
-                <div class="text-white fw-bold mt-2" style="text-shadow: 1px 1px 2px black;">BẬT LOA</div>
+                <div class="text-white fw-bold mt-2">BẬT LOA</div>
             </div>
         </div>
 
         <div id="ui-layer">
             <div class="top-bar d-flex justify-content-between align-items-center">
                 <div>
-                    <span id="rec-indicator" class="badge bg-danger hidden"><span class="rec-dot"></span> REC</span>
+                    <span id="rec-indicator" class="badge bg-danger hidden"><span class="rec-dot"></span> GHI HÌNH</span>
                     <span id="room-lbl" class="fw-bold ms-2 text-uppercase">...</span>
                 </div>
                 <div id="live-status" class="badge bg-secondary">Offline</div>
@@ -99,7 +97,7 @@
                 <div id="viewer-controls" class="hidden row g-2">
                     <div class="col-6"><button class="btn btn-danger btn-xl w-100 shadow" onclick="sendSignal('danger')">CẢNH BÁO</button></div>
                     <div class="col-6"><button class="btn btn-success btn-xl w-100 shadow" onclick="sendSignal('safe')">XÁC NHẬN</button></div>
-                    <div class="text-white-50 small text-center col-12">*Video đang được ghi tại máy hiện trường.</div>
+                    <div class="text-white-50 small text-center col-12">Hệ thống đang tự động ghi hình tại hiện trường.</div>
                 </div>
 
                 <div id="streamer-controls" class="hidden">
@@ -110,7 +108,7 @@
                     </div>
                     <div id="in-session" class="hidden">
                         <button class="btn btn-danger btn-xl w-100 shadow mb-2" onclick="finishSession()">
-                            <i class="fas fa-stop-circle"></i> KẾT THÚC & GỬI BÁO CÁO
+                            <i class="fas fa-stop-circle"></i> KẾT THÚC & GỬI
                         </button>
                         <button id="btn-status-display" class="btn btn-secondary w-100 py-2" disabled>
                             Đang chờ giám sát...
@@ -122,7 +120,6 @@
     </div>
 
     <script>
-        // === CONFIG ===
         const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwfbO0QC6-uklzUOMpuGKJkm_lU-RNuGVSO30zBZWFj6a3z3nWIydcLCNESO89q1Hq-HQ/exec";
         
         const firebaseConfig = {
@@ -137,20 +134,14 @@
         if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
         
-        let peer;
-        let role = '', ROOM_ID = '';
-        
-        // Biến ghi hình (Chỉ dùng cho Streamer)
-        let mediaRecorder;
-        let recordedChunks = [];
-        let isRecording = false;
+        let peer, role = '', ROOM_ID = '';
+        let mediaRecorder, recordedChunks = [], isRecording = false;
 
         function initApp(r) {
             const input = document.getElementById('room-input').value.trim();
             if(!input) return alert("Vui lòng nhập tên Trạm!");
             ROOM_ID = "VDC_" + input.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase();
             role = r;
-
             document.getElementById('setup-screen').classList.add('hidden');
             document.getElementById('main-app').classList.remove('hidden');
             document.getElementById('room-lbl').innerText = input;
@@ -158,7 +149,7 @@
             if (role === 'streamer') {
                 document.getElementById('streamer-controls').classList.remove('hidden');
                 document.getElementById('local-video').classList.remove('hidden');
-                listenSignal(); // Nghe lệnh từ Giám sát
+                listenSignal();
             } else {
                 document.getElementById('viewer-controls').classList.remove('hidden');
                 document.getElementById('remote-video').classList.remove('hidden');
@@ -166,84 +157,80 @@
             }
         }
 
-        // ==========================================
-        // 1. LOGIC ĐỘI HIỆN TRƯỜNG (STREAMER + RECORDER)
-        // ==========================================
-
         async function startSession() {
             try {
-                // 1. Mở Camera
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }, 
+                // Tối ưu hóa độ phân giải để giảm dung lượng (640x480)
+                const constraints = { 
+                    video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }, 
                     audio: true 
-                });
+                };
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 document.getElementById('local-video').srcObject = stream;
 
-                // 2. Bắt đầu ghi hình NGAY LẬP TỨC (Lưu vào RAM)
+                // Ghi hình nội bộ với Bitrate THẤP (250kbps) để gửi qua 4G
                 startInternalRecording(stream);
 
-                // 3. Phát Livestream
                 peer = new Peer({ config: { 'iceServers': [{ url: 'stun:stun.l.google.com:19302' }] } });
                 peer.on('open', id => {
                     db.ref('vdc_ops/' + ROOM_ID).update({ streamerID: id, status: 'live' });
-                    document.getElementById('live-status').innerText = "ĐANG PHÁT & GHI HÌNH";
+                    document.getElementById('live-status').innerText = "LIVE (REC)";
                     document.getElementById('live-status').className = "badge bg-danger";
                 });
                 peer.on('call', call => call.answer(stream));
 
-                // 4. Đổi giao diện
                 document.getElementById('pre-start').classList.add('hidden');
                 document.getElementById('in-session').classList.remove('hidden');
-
             } catch (e) { alert("Lỗi Camera: " + e.message); }
         }
 
         function startInternalRecording(stream) {
             recordedChunks = [];
-            // Chọn định dạng tối ưu cho Android/iOS
-            let options = { mimeType: 'video/webm;codecs=vp8' };
+            // Bitrate 250000 = 250kbps (Rất nhẹ, đảm bảo upload thành công)
+            let options = { mimeType: 'video/webm;codecs=vp8', videoBitsPerSecond: 250000 };
+            
             if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-                options = { mimeType: 'video/mp4' }; // Fallback cho Safari
-                if (!MediaRecorder.isTypeSupported(options.mimeType)) options = { mimeType: 'video/webm' };
+                // Fallback cho iPhone Safari (thường dùng mp4)
+                options = { mimeType: 'video/mp4', videoBitsPerSecond: 250000 }; 
+                if (!MediaRecorder.isTypeSupported(options.mimeType)) options = { videoBitsPerSecond: 250000 };
             }
 
             try {
                 mediaRecorder = new MediaRecorder(stream, options);
-            } catch (e) { 
-                alert("Thiết bị không hỗ trợ ghi hình. Vẫn phát livestream nhưng không lưu được video."); 
-                return;
-            }
+            } catch (e) { alert("Lỗi Recorder: " + e); return; }
 
             mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
-            mediaRecorder.onstop = uploadVideoToDrive; // Gắn hàm upload khi dừng
-            
-            mediaRecorder.start(1000); // Cắt chunk mỗi giây
+            mediaRecorder.onstop = () => { uploadVideoToDrive(3); }; // Thử lại tối đa 3 lần
+
+            mediaRecorder.start(1000); 
             isRecording = true;
             document.getElementById('rec-indicator').classList.remove('hidden');
         }
 
         function finishSession() {
-            if(confirm("Xác nhận kết thúc công việc và gửi báo cáo?")) {
-                // Dừng ghi hình -> Kích hoạt uploadVideoToDrive
+            if(confirm("Xác nhận kết thúc?")) {
                 if(mediaRecorder && isRecording) {
                     mediaRecorder.stop(); 
                     isRecording = false;
                 }
-                
-                // Cập nhật trạng thái
                 db.ref('vdc_ops/' + ROOM_ID).update({ status: 'ended' });
                 document.getElementById('streamer-controls').classList.add('hidden');
             }
         }
 
-        function uploadVideoToDrive() {
-            // Hiện màn hình upload chặn thao tác
+        function uploadVideoToDrive(retriesLeft) {
             document.getElementById('upload-screen').classList.remove('hidden');
-            document.getElementById('upload-detail').innerText = "Đang tổng hợp dữ liệu...";
+            document.getElementById('rescue-mode').classList.add('hidden'); // Ẩn nút cứu hộ
+            document.getElementById('upload-content').classList.remove('hidden');
 
             const blob = new Blob(recordedChunks, { type: 'video/webm' });
             const fileSizeMB = (blob.size / (1024*1024)).toFixed(2);
-            document.getElementById('upload-detail').innerText = `Kích thước file: ${fileSizeMB} MB. Đang tải lên...`;
+            document.getElementById('upload-detail').innerText = `File: ${fileSizeMB} MB. Đang gửi... (Còn ${retriesLeft} lần thử)`;
+
+            // Nếu file > 45MB thì cảnh báo ngay vì Google Script sẽ từ chối
+            if (blob.size > 45 * 1024 * 1024) {
+                showRescueMode("File quá lớn (>45MB). Google từ chối nhận.");
+                return;
+            }
 
             const reader = new FileReader();
             reader.readAsDataURL(blob);
@@ -254,6 +241,9 @@
                 var xhr = new XMLHttpRequest();
                 xhr.open("POST", APPS_SCRIPT_URL, true);
                 xhr.setRequestHeader('Content-Type', 'text/plain;charset=utf-8');
+                
+                // Timeout 60s
+                xhr.timeout = 60000; 
 
                 xhr.upload.onprogress = function(e) {
                     if (e.lengthComputable) {
@@ -264,15 +254,16 @@
                 };
 
                 xhr.onload = function() {
-                    alert("✅ BÁO CÁO THÀNH CÔNG! Video đã lưu vào Drive.");
-                    location.reload();
+                    if (xhr.status === 200) {
+                        alert("✅ Video đã được lưu thành công!");
+                        location.reload();
+                    } else {
+                        handleError(retriesLeft);
+                    }
                 };
 
-                xhr.onerror = function() {
-                    alert("❌ Lỗi Upload. Vui lòng kiểm tra 4G và thử lại.");
-                    // Cho phép thử lại nếu lỗi
-                    document.getElementById('upload-screen').classList.add('hidden');
-                };
+                xhr.onerror = function() { handleError(retriesLeft); };
+                xhr.ontimeout = function() { handleError(retriesLeft); };
 
                 xhr.send(JSON.stringify({
                     fileData: base64data,
@@ -282,24 +273,52 @@
             }
         }
 
+        function handleError(retriesLeft) {
+            if (retriesLeft > 1) {
+                console.log("Retrying upload...");
+                setTimeout(() => uploadVideoToDrive(retriesLeft - 1), 2000); // Thử lại sau 2s
+            } else {
+                showRescueMode("Mạng quá yếu hoặc lỗi Server.");
+            }
+        }
+
+        function showRescueMode(reason) {
+            document.getElementById('upload-content').classList.add('hidden');
+            document.getElementById('rescue-mode').classList.remove('hidden');
+            document.querySelector('#rescue-mode p.text-white').innerText = reason;
+        }
+
+        // Hàm cứu hộ: Tải file về máy điện thoại
+        function downloadLocally() {
+            const blob = new Blob(recordedChunks, { type: 'video/webm' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `${ROOM_ID}_EVIDENCE.webm`;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                window.URL.revokeObjectURL(url);
+                alert("Đã lưu vào thư viện! Hãy gửi thủ công (Zalo/Drive) sau.");
+            }, 100);
+        }
+
+        // Logic cũ
         function listenSignal() {
             const btn = document.getElementById('btn-status-display');
             db.ref('vdc_ops/' + ROOM_ID + '/signal').on('value', snap => {
                 const s = snap.val();
                 if (s === 'safe') {
                     btn.className = "btn btn-primary w-100 py-2 fw-bold";
-                    btn.innerText = "ĐÃ DUYỆT AN TOÀN - ĐƯỢC LÀM VIỆC";
+                    btn.innerText = "ĐÃ DUYỆT AN TOÀN";
                 } else if (s === 'danger') {
                     btn.className = "btn btn-danger w-100 py-2 fw-bold";
-                    btn.innerText = "CẢNH BÁO - NGUY HIỂM!";
+                    btn.innerText = "NGUY HIỂM!";
                     if(navigator.vibrate) navigator.vibrate([500,200,500]);
                 }
             });
         }
-
-        // ==========================================
-        // 2. LOGIC GIÁM SÁT (VIEWER - CHỈ XEM)
-        // ==========================================
 
         function initViewer() {
             peer = new Peer({ config: { 'iceServers': [{ url: 'stun:stun.l.google.com:19302' }] } });
@@ -311,40 +330,29 @@
                         document.getElementById('live-status').innerText = "LIVE";
                         document.getElementById('live-status').className = "badge bg-success";
                     } else if (d && d.status === 'ended') {
-                        alert("Đội hiện trường đã kết thúc phiên làm việc.");
+                        alert("Đã kết thúc phiên.");
                         location.reload();
                     }
                 });
             });
         }
-
+        
         let currConn;
         function connectToStreamer(id) {
             if (currConn) return;
-            const canvas = document.createElement('canvas'); 
-            const dummy = canvas.captureStream(10);
-            const call = peer.call(id, dummy); // Gọi để bắt tay
+            const canvas = document.createElement('canvas'); const dummy = canvas.captureStream(10);
+            const call = peer.call(id, dummy);
             currConn = call;
-
             call.on('stream', stream => {
-                const vid = document.getElementById('remote-video');
-                vid.srcObject = stream;
-                // Hiện nút bật loa
+                document.getElementById('remote-video').srcObject = stream;
                 document.getElementById('audio-btn-overlay').classList.remove('hidden');
             });
         }
-
         function unmuteAudio() {
             const vid = document.getElementById('remote-video');
-            vid.muted = false;
-            vid.play().then(() => {
-                document.getElementById('audio-btn-overlay').classList.add('hidden');
-            });
+            vid.muted = false; vid.play().then(() => document.getElementById('audio-btn-overlay').classList.add('hidden'));
         }
-
-        function sendSignal(type) {
-            db.ref('vdc_ops/' + ROOM_ID).update({ signal: type });
-        }
+        function sendSignal(type) { db.ref('vdc_ops/' + ROOM_ID).update({ signal: type }); }
 
     </script>
 </body>
