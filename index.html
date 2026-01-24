@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>VDC Safety V1.8</title>
+    <title>VDC Safety V1.9 (Network Fix)</title>
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
@@ -18,11 +18,12 @@
         #video-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
         video { width: 100%; height: 100%; object-fit: cover; }
 
-        /* DEBUG LOGS (Dùng để bắt bệnh) */
-        #debug-log {
+        /* DEBUG LOGS (Quan trọng để theo dõi mạng) */
+        #network-log {
             position: absolute; top: 60px; left: 10px; z-index: 500;
-            font-family: monospace; font-size: 11px; color: #00ff00;
-            background: rgba(0,0,0,0.7); padding: 5px; max-width: 200px; pointer-events: none;
+            font-family: monospace; font-size: 10px; color: #00ff00;
+            background: rgba(0,0,0,0.6); padding: 5px; max-width: 250px; pointer-events: none;
+            border-left: 2px solid #00ff00;
         }
 
         #ui-layer {
@@ -67,7 +68,8 @@
 <body>
 
     <div id="setup-screen">
-        <h3 class="fw-bold text-primary mb-4">VDC SAFETY V1.8</h3>
+        <h3 class="fw-bold text-primary mb-4">VDC SAFETY V1.9</h3>
+        <p class="text-muted small">Multi-STUN & Auto Reconnect</p>
         <input type="text" id="room-input" class="form-control form-control-lg mb-3 w-100 shadow-sm" style="max-width: 350px;" placeholder="Nhập tên Trạm...">
         <div class="d-grid gap-3 w-100" style="max-width: 350px;">
             <button class="btn btn-primary btn-lg shadow" onclick="initApp('streamer')">ĐỘI HIỆN TRƯỜNG</button>
@@ -81,15 +83,16 @@
             <video id="local-video" autoplay playsinline muted class="hidden"></video>
         </div>
 
-        <div id="debug-log">System Log:<br></div>
+        <div id="network-log">Network Status: OK<br></div>
 
         <div id="audio-unlock" class="hidden interactive">
             <h2 class="text-white fw-bold mb-3" id="station-name-display">...</h2>
-            <div class="text-warning small mb-3" id="status-text">Đang tìm tín hiệu...</div>
+            <div id="conn-msg" class="text-warning small mb-3">Đang thiết lập mạng P2P...</div>
+            
             <button id="btn-unlock" class="btn btn-success btn-lg rounded-pill px-5 py-4 shadow pulse-btn hidden" onclick="unlockAudio()">
-                <i class="fas fa-volume-up fa-2x"></i><br>BẤM ĐỂ XEM & NGHE
+                <i class="fas fa-volume-up fa-2x"></i><br>BẤM ĐỂ KẾT NỐI
             </button>
-            <button id="btn-reconnect" class="btn btn-outline-light mt-3 hidden" onclick="location.reload()">Thử lại</button>
+            <button id="btn-retry" class="btn btn-outline-light mt-3 hidden" onclick="retryConnection()">Kết nối lại</button>
         </div>
 
         <div id="ui-layer">
@@ -99,9 +102,6 @@
                     <span id="queue-indicator" class="queue-badge hidden">Queue: 0</span>
                     <span id="room-lbl" class="text-white fw-bold ms-2 text-uppercase">...</span>
                 </div>
-                <a id="drive-link" href="#" target="_blank" class="btn btn-sm btn-outline-light hidden">
-                    <i class="fab fa-google-drive"></i> Folder Drive
-                </a>
             </div>
 
             <div class="bottom-bar interactive">
@@ -121,7 +121,14 @@
     </div>
 
     <script>
-        // === CONFIG ===
+        // === 1. CONFIG MẠNG (Tăng cường) ===
+        const ICE_SERVERS = [
+            { url: 'stun:stun.l.google.com:19302' },
+            { url: 'stun:stun1.l.google.com:19302' },
+            { url: 'stun:stun2.l.google.com:19302' },
+            { url: 'stun:stun3.l.google.com:19302' }
+        ];
+
         const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwfbO0QC6-uklzUOMpuGKJkm_lU-RNuGVSO30zBZWFj6a3z3nWIydcLCNESO89q1Hq-HQ/exec";
         
         const firebaseConfig = {
@@ -142,18 +149,15 @@
         let isUploading = false;
         let partIndex = 1;
 
-        function log(msg) {
+        function logNet(msg) {
             console.log(msg);
-            const el = document.getElementById('debug-log');
-            el.innerHTML += `> ${msg}<br>`;
-            // Tự cuộn xuống
-            el.scrollTop = el.scrollHeight;
+            const el = document.getElementById('network-log');
+            el.innerHTML = `> ${msg}<br>` + el.innerHTML;
         }
 
-        // === INIT ===
         function initApp(r) {
             const input = document.getElementById('room-input').value.trim();
-            if(!input) return alert("Nhập tên Trạm!");
+            if(!input) return alert("Vui lòng nhập tên Trạm!");
             
             ROOM_ID = "VDC_" + input.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase();
             
@@ -171,46 +175,68 @@
         }
 
         // ==========================================
-        // 1. STREAMER (HIỆN TRƯỜNG)
+        // 2. STREAMER (HIỆN TRƯỜNG)
         // ==========================================
         async function startStreamer() {
             document.getElementById('local-video').classList.remove('hidden');
             document.getElementById('streamer-btns').classList.remove('hidden');
 
             try {
-                log("Mở camera...");
+                // Video nhẹ (480p)
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }, 
                     audio: true 
                 });
                 document.getElementById('local-video').srcObject = stream;
                 
-                log("Bắt đầu ghi hình...");
+                // Bắt đầu upload
                 startChunkRecording(stream);
 
-                log("Kết nối Peer Server...");
-                peer = new Peer({ config: { 'iceServers': [{ url: 'stun:stun.l.google.com:19302' }] } });
-                
-                peer.on('open', id => {
-                    log("ID: " + id);
-                    db.ref('vdc_ops/' + ROOM_ID).set({
-                        streamerID: id,
-                        status: 'live',
-                        folderName: SESSION_FOLDER_NAME,
-                        driveUrl: ''
-                    });
-                    db.ref('vdc_ops/' + ROOM_ID).onDisconnect().update({ status: 'offline' });
-                    log("Đã sẵn sàng!");
-                });
-
-                peer.on('call', call => {
-                    log("Có người xem!");
-                    call.answer(stream);
-                });
+                // Kết nối P2P
+                initPeerStreamer(stream);
 
                 listenSignal();
+            } catch(e) { logNet("Lỗi Cam: " + e.message); alert("Lỗi Cam: " + e.message); }
+        }
 
-            } catch(e) { log("Lỗi: " + e.message); alert("Lỗi Cam: " + e.message); }
+        function initPeerStreamer(stream) {
+            logNet("Khởi tạo Peer...");
+            if(peer) peer.destroy();
+            
+            peer = new Peer({ config: { 'iceServers': ICE_SERVERS } });
+            
+            peer.on('open', id => {
+                logNet("ID Streamer: " + id);
+                db.ref('vdc_ops/' + ROOM_ID).set({
+                    streamerID: id,
+                    status: 'live',
+                    folderName: SESSION_FOLDER_NAME
+                });
+                db.ref('vdc_ops/' + ROOM_ID).onDisconnect().update({ status: 'offline' });
+            });
+
+            peer.on('call', call => {
+                logNet("Có cuộc gọi tới...");
+                call.answer(stream);
+                
+                call.peerConnection.onconnectionstatechange = () => {
+                    logNet("Trạng thái nối: " + call.peerConnection.connectionState);
+                }
+            });
+
+            // Tự động hồi phục khi lỗi mạng
+            peer.on('error', err => {
+                logNet("Lỗi Peer: " + err.type);
+                if(err.type === 'network' || err.type === 'peer-unavailable') {
+                    logNet("Đang thử lại sau 2s...");
+                    setTimeout(() => initPeerStreamer(stream), 2000);
+                }
+            });
+            
+            peer.on('disconnected', () => {
+                logNet("Mất kết nối server. Reconnect...");
+                peer.reconnect();
+            });
         }
 
         function startChunkRecording(stream) {
@@ -228,7 +254,7 @@
                 };
                 mediaRecorder.start(10000); // 10s
                 document.getElementById('live-indicator').classList.remove('hidden');
-            } catch(e) { log("Rec Error: " + e); }
+            } catch(e) { logNet("Rec Error: " + e); }
         }
 
         function processQueue() {
@@ -254,14 +280,14 @@
                     })
                 })
                 .then(() => {
-                    log("Đã gửi gói " + item.index);
+                    logNet("Đã gửi gói " + item.index);
                     uploadQueue.shift();
                     isUploading = false;
                     updateQueueUI();
                     processQueue();
                 })
                 .catch(err => {
-                    log("Lỗi gửi gói " + item.index);
+                    logNet("Lỗi gửi gói " + item.index + ". Thử lại...");
                     isUploading = false;
                     setTimeout(processQueue, 5000);
                 });
@@ -285,97 +311,99 @@
         }
 
         // ==========================================
-        // 2. VIEWER LOGIC (GIÁM SÁT) - DEBUG KỸ
+        // 2. VIEWER LOGIC (GIÁM SÁT)
         // ==========================================
         function startViewer() {
             document.getElementById('audio-unlock').classList.remove('hidden');
             document.getElementById('station-name-display').innerText = ROOM_ID.replace('VDC_', '');
             
-            log("Viewer khởi động...");
+            initPeerViewer();
+        }
+
+        function initPeerViewer() {
+            logNet("Viewer khởi động Peer...");
+            if(peer) peer.destroy();
             
-            peer = new Peer({ config: { 'iceServers': [{ url: 'stun:stun.l.google.com:19302' }] } });
+            peer = new Peer({ config: { 'iceServers': ICE_SERVERS } });
             
-            peer.on('open', (id) => {
-                log("Viewer ID OK. Quét DB...");
-                
-                db.ref('vdc_ops/' + ROOM_ID).on('value', snap => {
-                    const d = snap.val();
-                    if (d && d.streamerID) {
-                        log("Thấy Streamer: " + d.streamerID);
-                        
-                        // Nếu đang ở trạng thái chờ -> Hiện nút kết nối
-                        document.getElementById('status-text').innerText = "Đã tìm thấy tín hiệu!";
-                        document.getElementById('status-text').className = "text-success mb-3 fw-bold";
-                        
-                        // Lưu ID để gọi khi bấm nút
-                        window.targetStreamerID = d.streamerID;
-                        document.getElementById('btn-unlock').classList.remove('hidden');
-                        
-                        if(d.folderName) {
-                            const linkBtn = document.getElementById('drive-link');
-                            linkBtn.classList.remove('hidden');
-                            linkBtn.href = "https://drive.google.com/drive/u/0/folders/11GBcLqK2ggbntyRLt-ID23YLYzZWWON2"; 
-                        }
-                    } else {
-                        log("Chưa thấy Streamer online...");
-                        document.getElementById('status-text').innerText = "Đang chờ hiện trường bật máy...";
-                        document.getElementById('status-text').className = "text-warning mb-3";
-                        document.getElementById('btn-unlock').classList.add('hidden');
-                    }
-                });
+            peer.on('open', () => {
+                logNet("Viewer Peer OK.");
+                checkStreamerStatus();
             });
 
-            peer.on('error', err => log("Peer Error: " + err.type));
+            peer.on('error', err => {
+                logNet("Lỗi Viewer: " + err.type);
+                document.getElementById('conn-msg').innerText = "Lỗi mạng. Đang thử lại...";
+                setTimeout(initPeerViewer, 2000);
+            });
+        }
+
+        function checkStreamerStatus() {
+            db.ref('vdc_ops/' + ROOM_ID).on('value', snap => {
+                const d = snap.val();
+                if (d && d.streamerID) {
+                    logNet("Thấy Streamer: " + d.streamerID);
+                    window.targetStreamerID = d.streamerID;
+                    
+                    document.getElementById('conn-msg').innerText = "Đã tìm thấy trạm!";
+                    document.getElementById('conn-msg').className = "text-success mb-3 fw-bold";
+                    document.getElementById('btn-unlock').classList.remove('hidden');
+                    document.getElementById('btn-retry').classList.add('hidden');
+                } else {
+                    logNet("Chưa thấy trạm...");
+                    document.getElementById('conn-msg').innerText = "Đang chờ trạm phát sóng...";
+                    document.getElementById('conn-msg').className = "text-warning mb-3";
+                    document.getElementById('btn-unlock').classList.add('hidden');
+                }
+            });
         }
 
         let currConn;
         function unlockAudio() {
-            if(!window.targetStreamerID) return alert("Chưa tìm thấy trạm!");
+            if(!window.targetStreamerID) return;
             
-            log("Đang gọi kết nối...");
-            document.getElementById('btn-unlock').disabled = true;
+            logNet("Bắt đầu kết nối...");
             document.getElementById('btn-unlock').innerHTML = "Đang kết nối...";
+            document.getElementById('btn-unlock').disabled = true;
 
-            // TẠO DUMMY STREAM CÓ MÀU (FIX LỖI MÀN HÌNH ĐEN)
+            // KỸ THUẬT DUMMY STREAM NHẸ NHẤT
             const canvas = document.createElement('canvas'); 
-            canvas.width = 100; canvas.height = 100;
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = "green"; 
-            ctx.fillRect(0,0,100,100); // Vẽ ô vuông xanh
-            
-            // Ép canvas vẽ liên tục để tạo stream động
-            setInterval(() => {
-                ctx.fillStyle = ctx.fillStyle === 'green' ? 'blue' : 'green';
-                ctx.fillRect(0,0,100,100);
-            }, 500);
-
-            const dummyStream = canvas.captureStream(30); 
+            canvas.width = 10; canvas.height = 10;
+            const dummyStream = canvas.captureStream(10);
             
             const call = peer.call(window.targetStreamerID, dummyStream);
             currConn = call;
 
             call.on('stream', stream => {
-                log("Đã nhận VIDEO!");
+                logNet("ĐÃ NHẬN STREAM!");
                 const vid = document.getElementById('remote-video');
+                vid.srcObject = stream;
                 
                 document.getElementById('audio-unlock').classList.add('hidden');
                 document.getElementById('remote-video').classList.remove('hidden');
                 document.getElementById('viewer-btns').classList.remove('hidden');
 
-                vid.srcObject = stream;
-                vid.play().catch(e => log("Play error: " + e));
+                vid.muted = false;
+                vid.play().catch(e => logNet("Play error: " + e));
             });
             
-            call.on('close', () => {
-                log("Kết nối bị ngắt.");
-                alert("Mất kết nối với hiện trường.");
-                location.reload();
+            call.on('error', err => {
+                logNet("Call Error: " + err);
+                retryConnection();
             });
             
-            call.on('error', (err) => {
-                log("Call Error: " + err);
-                document.getElementById('btn-reconnect').classList.remove('hidden');
-            });
+            // Theo dõi trạng thái
+            call.peerConnection.onconnectionstatechange = () => {
+                const state = call.peerConnection.connectionState;
+                logNet("P2P State: " + state);
+                if(state === 'failed' || state === 'disconnected') retryConnection();
+            }
+        }
+
+        function retryConnection() {
+            document.getElementById('btn-unlock').classList.add('hidden');
+            document.getElementById('btn-retry').classList.remove('hidden');
+            document.getElementById('conn-msg').innerText = "Mất kết nối. Vui lòng bấm thử lại.";
         }
 
         // === SIGNAL LOGIC ===
